@@ -1,7 +1,4 @@
-use ratatui::{text::Span, widgets::Cell};
-
 use crate::api::types::Ticket;
-use crate::theme::Theme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Column {
@@ -117,54 +114,35 @@ impl Column {
         }
     }
 
-    pub fn cell(&self, ticket: &Ticket, theme: &Theme) -> Cell<'static> {
+    pub fn format_value(&self, ticket: &Ticket) -> String {
         match self {
-            Self::Site => Cell::from(Span::raw(format!(" {}", ticket.site))),
-            Self::Key => Cell::from(Span::raw(ticket.key.clone())),
-            Self::Type => Cell::from(Span::raw(ticket.issue_type.clone())),
-            Self::Status => Cell::from(Span::styled(
-                ticket.status.clone(),
-                theme.status_style(&ticket.status_color),
-            )),
-            Self::Priority => Cell::from(Span::styled(
-                ticket.priority.clone(),
-                theme.priority_style(&ticket.priority),
-            )),
-            Self::Age => Cell::from(Span::raw(format!("{}d", ticket.ageing_days))),
-            Self::Due => {
-                let due = ticket
-                    .due_date
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "-".to_string());
-                Cell::from(Span::raw(due))
-            }
-            Self::Assignee => Cell::from(Span::raw(ticket.assignee.clone())),
-            Self::Reporter => Cell::from(Span::raw(ticket.reporter.clone())),
-            Self::Parent => {
-                let text = ticket.parent_key.as_deref().unwrap_or("-");
-                Cell::from(Span::raw(text.to_string()))
-            }
+            Self::Site => ticket.site.clone(),
+            Self::Key => ticket.key.clone(),
+            Self::Type => ticket.issue_type.clone(),
+            Self::Status => ticket.status.clone(),
+            Self::Priority => ticket.priority.clone(),
+            Self::Age => format!("{}d", ticket.ageing_days),
+            Self::Due => ticket
+                .due_date
+                .map(|d| d.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            Self::Assignee => ticket.assignee.clone(),
+            Self::Reporter => ticket.reporter.clone(),
+            Self::Parent => ticket.parent_key.as_deref().unwrap_or("-").to_string(),
             Self::Labels => {
-                let text = if ticket.labels.is_empty() {
+                if ticket.labels.is_empty() {
                     "-".to_string()
                 } else {
                     ticket.labels.join(", ")
-                };
-                Cell::from(Span::raw(text))
+                }
             }
-            Self::Sprint => {
-                let text = ticket.sprint_name.as_deref().unwrap_or("-");
-                Cell::from(Span::raw(text.to_string()))
-            }
-            Self::Summary => Cell::from(Span::raw(ticket.summary.clone())),
-            Self::Custom(id) => {
-                let text = ticket
-                    .custom_fields
-                    .get(id)
-                    .cloned()
-                    .unwrap_or_else(|| "-".into());
-                Cell::from(Span::raw(text))
-            }
+            Self::Sprint => ticket.sprint_name.as_deref().unwrap_or("-").to_string(),
+            Self::Summary => ticket.summary.clone(),
+            Self::Custom(id) => ticket
+                .custom_fields
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| "-".into()),
         }
     }
 

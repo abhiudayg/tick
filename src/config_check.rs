@@ -167,6 +167,7 @@ mod tests {
             email: "a@b.com".into(),
             token: "t".into(),
             sites,
+            default_site: None,
             columns: None,
             max_results: 50,
             page_size: 20,

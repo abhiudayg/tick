@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::hooks;
 use crate::operations;
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum BulkCommand {
     /// Apply workflow transition by name to each key
     Transition(BulkTransitionArgs),
@@ -19,7 +19,7 @@ pub enum BulkCommand {
     Labels(BulkLabelsArgs),
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct BulkTransitionArgs {
     #[arg(long)]
     pub site: String,
@@ -31,7 +31,7 @@ pub struct BulkTransitionArgs {
     pub quiet: bool,
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct BulkAssignArgs {
     #[arg(long)]
     pub site: String,
@@ -44,7 +44,7 @@ pub struct BulkAssignArgs {
     pub quiet: bool,
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct BulkLabelsArgs {
     #[arg(long)]
     pub site: String,
@@ -130,7 +130,7 @@ async fn run_labels(args: BulkLabelsArgs) -> Result<(), String> {
     let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
     let site = require_site(&config, &args.site)?;
     let keys = parse_keys_list(&args.keys)?;
-    let labels = crate::app::parse_labels_input(&args.set);
+    let labels = crate::cli::util::parse_labels_input(&args.set);
     let jira = Arc::new(
         JiraClient::from_config(&config, false)
             .await

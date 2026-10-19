@@ -44,8 +44,8 @@ impl TransitionField {
 
     pub fn modal_hint(&self) -> &'static str {
         match self.kind {
-            TransitionFieldKind::User => crate::input::LOAD_MORE_USERS_USER_MODAL_HINT,
-            TransitionFieldKind::Date => "Enter a date in the footer (YYYY-MM-DD), then Enter",
+            TransitionFieldKind::User => "Select an assignable user (type to search)",
+            TransitionFieldKind::Date => "Enter a date (YYYY-MM-DD)",
             TransitionFieldKind::DateTime => "Enter date/time in the footer, then Enter",
             TransitionFieldKind::Boolean => "Select Yes or No",
             TransitionFieldKind::Number => "Enter a number in the footer, then Enter",

@@ -1,5 +1,17 @@
+pub mod adf_text;
+pub mod agile_cmd;
+pub mod api_cmd;
 pub mod bulk_cmd;
+pub mod config_cmd;
+pub mod confluence_cmd;
+pub mod context_cmd;
 pub mod fields_cmd;
+pub mod format;
 pub mod issue;
+pub mod page_cmd;
+pub mod project_cmd;
 pub mod search;
+pub mod space_cmd;
+pub mod style;
+pub mod user_cmd;
 pub mod util;

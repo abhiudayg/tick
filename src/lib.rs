@@ -1,137 +1,147 @@
 pub mod api;
-pub mod app;
 pub mod auth;
 pub mod auth_status;
 pub mod batch;
-pub mod bulk;
-pub mod cache;
 pub mod cli;
 pub mod columns;
 pub mod config;
 pub mod config_check;
-pub mod create_flow;
-pub mod duplicate_field_edit;
-pub mod editable_fields;
-pub mod fetch_status;
-pub mod global_search;
 pub mod hooks;
-pub mod input;
 pub mod issue_key;
-pub mod issue_relations_flow;
+pub mod mcp;
 pub mod oauth;
 pub mod operations;
 pub mod platform;
-pub mod plugins;
 pub mod template_export;
-pub mod template_export_flow;
-pub mod template_manage_flow;
 pub mod template_persist;
-pub mod theme;
-pub mod ticket_lock;
-pub mod ui;
-pub mod view_mode;
 
-pub use view_mode::ViewMode;
+pub use config::view_mode;
+pub use config::ViewMode;
 
-use app::App;
 use clap::{Parser, Subcommand};
+use cli::style;
 use config::Config;
-use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::{backend::CrosstermBackend, Terminal};
-use std::{io, time::Duration};
-use theme::Theme;
 
-#[derive(Parser)]
-#[command(name = "tick", about = "Jira ticket dashboard for the terminal")]
+const HELP_TEMPLATE: &str = "\
+{before-help}Work seamlessly with Atlassian (Jira and Confluence) from the command line.
+
+USAGE
+  tick <command> <subcommand> [flags]
+
+CORE COMMANDS
+  auth:        Authenticate tick with Atlassian (OAuth or API token)
+  config:      Manage configuration for tick
+  context:     Manage and switch active server / site context
+  mcp:         Serve Model Context Protocol (MCP) stdio server for LLMs
+
+JIRA COMMANDS
+  issue:       Manage Jira issues (list, view, create, edit, close, transition, assign, delete)
+  project:     Manage Jira projects and view workflow statuses
+  board:       Manage agile boards and view backlogs
+  sprint:      Manage agile sprints, sprint issues, and move issues
+  field:       Discover Jira standard and custom fields
+  user:        View authenticated user, search users, and find assignable users
+
+CONFLUENCE COMMANDS
+  space:       View and list Confluence spaces
+  page:        Manage Confluence pages (list, view, create, edit, delete, comment, history)
+
+ADDITIONAL COMMANDS
+  api:         Make an authenticated Atlassian REST API request (Jira & Confluence)
+  bulk:        Perform bulk operations across multiple Jira issues
+  doctor:      Probe configured Jira and Confluence endpoints for health and connectivity
+  search:      Search Jira issues or Confluence pages
+  template:    Export Jira issues as templates
+
+FLAGS
+  -h, --help      Show help for command
+  -v, --version   Show tick version
+      --init      Create default configuration file
+      --check     Validate local configuration
+
+LEARN MORE
+  Use 'tick <command> <subcommand> --help' for more information about a command.
+  Documentation: https://github.com/aeswibon/tick
+";
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "tick",
+    version = "2.0.0",
+    about = "Fast, comprehensive CLI and MCP server for Atlassian (Jira and Confluence)",
+    help_template = HELP_TEMPLATE
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<TickCommand>,
 
+    /// Initialize default config file
     #[arg(long, global = true)]
     pub init: bool,
 
-    #[arg(long, global = true)]
-    pub doctor: bool,
-
-    /// Offline config validation (structural; use --doctor for live Jira probes)
+    /// Offline config validation
     #[arg(long, global = true)]
     pub check: bool,
 
+    /// Run diagnostic checks against configured Atlassian sites
     #[arg(long, global = true)]
-    pub debug: bool,
-
-    #[arg(long, global = true)]
-    pub theme: Option<String>,
-
-    #[arg(long, global = true)]
-    pub max_results: Option<u32>,
-
-    #[arg(long, global = true)]
-    pub page_size: Option<u32>,
-
-    #[arg(long, global = true)]
-    pub list_themes: bool,
+    pub doctor: bool,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum TickCommand {
-    /// Auth login / status / logout (status covers API token and OAuth)
+    /// Authenticate tick with Atlassian (login, status, logout)
     Auth {
         #[command(subcommand)]
         action: AuthCommand,
     },
-    /// Issue template utilities
-    Template {
+    /// Manage configuration for tick
+    Config(cli::config_cmd::ConfigArgs),
+    /// Manage and switch active server/site context
+    Context(cli::context_cmd::ContextArgs),
+    /// Serve Model Context Protocol (MCP) server for LLMs
+    Mcp {
         #[command(subcommand)]
-        action: TemplateCommand,
+        action: mcp::McpCommand,
     },
-    /// Headless issue operations (JSON output)
-    Issue {
-        #[command(subcommand)]
-        action: cli::issue::IssueCommand,
-    },
-    /// Search issues via JQL (JSON)
-    Search(cli::search::SearchArgs),
-    /// Bulk operations on multiple issue keys
-    Bulk {
-        #[command(subcommand)]
-        action: cli::bulk_cmd::BulkCommand,
-    },
-    /// Discover Jira fields (custom field phase 2)
+    /// Manage Jira issues
+    Issue(cli::issue::IssueArgs),
+    /// Manage Jira projects
+    Project(cli::project_cmd::ProjectArgs),
+    /// View agile boards
+    Board(cli::agile_cmd::BoardArgs),
+    /// View agile sprints
+    Sprint(cli::agile_cmd::SprintArgs),
+    /// Discover Jira fields
     Fields {
         #[command(subcommand)]
         action: cli::fields_cmd::FieldsCommand,
     },
+    /// Jira user directory
+    User(cli::user_cmd::UserArgs),
+    /// View Confluence spaces
+    Space(cli::space_cmd::SpaceArgs),
+    /// Manage Confluence pages
+    Page(cli::page_cmd::PageArgs),
+    /// Raw Atlassian REST API requests
+    Api(cli::api_cmd::ApiArgs),
+    /// Search Jira issues or Confluence pages
+    Search(cli::search::SearchArgs),
+    /// Bulk operations across multiple Jira issues
+    Bulk {
+        #[command(subcommand)]
+        action: cli::bulk_cmd::BulkCommand,
+    },
+    /// Export Jira issues as templates
+    Template {
+        #[command(subcommand)]
+        action: TemplateCommand,
+    },
+    /// Run diagnostic probes against configured sites
+    Doctor,
 }
 
-#[derive(Subcommand)]
-pub enum TemplateCommand {
-    /// Fetch issues and emit [[templates]] TOML for config
-    Export(TemplateExportArgs),
-}
-
-#[derive(Parser)]
-pub struct TemplateExportArgs {
-    /// Site name from config ([[sites]].name)
-    pub site: String,
-    /// Issue keys to export (e.g. HIN-123)
-    pub keys: Vec<String>,
-    /// Write to file (append with --append)
-    #[arg(short, long)]
-    pub output: Option<std::path::PathBuf>,
-    /// Append to an existing templates file
-    #[arg(long)]
-    pub append: bool,
-}
-
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum AuthCommand {
     /// Browser login; stores tokens in ~/.config/tick/oauth.json
     Login,
@@ -141,268 +151,133 @@ pub enum AuthCommand {
     Logout,
 }
 
-pub async fn run_doctor(config: &Config) {
-    let client = match api::JiraClient::from_config(config, false).await {
-        Ok(c) => c,
-        Err(e) => {
-            println!("Auth error: {e}");
-            return;
-        }
-    };
-    let probe_jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC";
+#[derive(Subcommand, Debug)]
+pub enum TemplateCommand {
+    /// Fetch issues and emit [[templates]] TOML for config
+    Export(TemplateExportArgs),
+}
 
-    for site in &config.sites {
-        println!("--- {} ({}) ---", site.name, site.base_url);
-
-        match client
-            .search_jql(&site.base_url, probe_jql, 3, &mut None)
-            .await
-        {
-            Ok(ids) => println!("  JQL search: OK ({} issue ids)", ids.len()),
-            Err(e) => println!("  JQL search: FAILED — {e}"),
-        }
-
-        match client
-            .search_jql(&site.base_url, probe_jql, 2, &mut None)
-            .await
-        {
-            Ok(ids) => {
-                let sf = site.sprint_field.as_deref();
-                match client.bulk_fetch(&site.base_url, &ids, sf, &[], true).await {
-                    Ok(issues) => println!(
-                        "  Bulk fetch: OK ({} ids → {} issues)",
-                        ids.len(),
-                        issues.len()
-                    ),
-                    Err(e) => println!("  Bulk fetch: FAILED — {e}"),
-                }
-            }
-            Err(e) => println!("  Bulk fetch: skipped — {e}"),
-        }
-
-        match client.find_sprint_fields(&site.base_url).await {
-            Ok(fields) if fields.is_empty() => {
-                println!("  Sprint fields: none found (set sprint_field in config if needed)");
-            }
-            Ok(fields) => {
-                println!("  Sprint fields (use id in config sprint_field):");
-                for (id, name) in fields {
-                    let configured = site.sprint_field.as_deref() == Some(id.as_str());
-                    let mark = if configured { " *" } else { "" };
-                    println!("    {id} — {name}{mark}");
-                }
-            }
-            Err(e) => println!("  Sprint fields: FAILED — {e}"),
-        }
-
-        match client.list_boards(&site.base_url).await {
-            Ok(boards) if boards.is_empty() => {
-                println!("  Agile boards: none found (set board_id or boards in config)");
-            }
-            Ok(boards) => {
-                println!("  Agile boards (board_id / boards.PROJ in config):");
-                for board in boards {
-                    let pk = board.project_key.as_deref();
-                    let mark = if site.is_board_configured(board.id, pk) {
-                        " *"
-                    } else {
-                        ""
-                    };
-                    let proj = pk.unwrap_or("-");
-                    println!("    {} — {} ({}){mark}", board.id, board.name, proj);
-                }
-            }
-            Err(e) => println!("  Agile boards: FAILED — {e}"),
-        }
-    }
-
-    println!("\n--- Plugins ---");
-    let host = plugins::PluginHost::load();
-    for line in host.doctor_lines() {
-        println!("{line}");
-    }
-
-    if let Some(site) = config.sites.first() {
-        println!("\n--- Custom fields (sample) ---");
-        println!(
-            "  Run: tick fields list --site {} [--project KEY]",
-            site.name
-        );
-    }
+#[derive(Parser, Debug)]
+pub struct TemplateExportArgs {
+    /// Site name from config ([[sites]].name)
+    pub site: String,
+    /// Issue keys to export (e.g. PROJ-123)
+    pub keys: Vec<String>,
+    /// Write to file (append with --append)
+    #[arg(short, long)]
+    pub output: Option<std::path::PathBuf>,
+    /// Append to an existing templates file
+    #[arg(long)]
+    pub append: bool,
 }
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    if let Some(TickCommand::Auth { action }) = cli.command {
-        return run_auth_command(action).await;
-    }
-
-    if let Some(TickCommand::Template { action }) = cli.command {
-        return run_template_command(action).await;
-    }
-
-    if let Some(TickCommand::Issue { action }) = cli.command {
-        return cli::issue::run(action).await;
-    }
-
-    if let Some(TickCommand::Search(args)) = cli.command {
-        return cli::search::run(args)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error> { e.into() });
-    }
-
-    if let Some(TickCommand::Bulk { action }) = cli.command {
-        return cli::bulk_cmd::run(action)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error> { e.into() });
-    }
-
-    if let Some(TickCommand::Fields { action }) = cli.command {
-        return cli::fields_cmd::run(action)
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error> { e.into() });
-    }
-
     if cli.init {
         Config::create_default_config().map_err(|e| format!("Config error: {}", e))?;
-        return Ok(());
-    }
-
-    let mut config = match Config::load() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Config error: {}", e);
-            eprintln!("Run `tick --init` to create a default config file");
-            std::process::exit(1);
-        }
-    };
-
-    if cli.doctor {
-        run_doctor(&config).await;
+        println!("{} Initialized default configuration", style::green("✓"));
         return Ok(());
     }
 
     if cli.check {
+        let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
         std::process::exit(config_check::run_check(&config));
     }
 
-    if cli.list_themes {
-        println!("Available themes:");
-        for name in Theme::list_available() {
-            let builtin = Theme::all_builtin().contains_key(name.as_str());
-            let tag = if builtin { "built-in" } else { "custom" };
-            println!("  {name} ({tag})");
-        }
-        println!("\nSet theme in config.toml or pass --theme <name>");
-        println!("Custom themes: ~/.config/tick/themes/<name>.toml");
-        println!("Examples: themes/ in the tick repository");
+    if cli.doctor {
+        let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
+        run_doctor(&config).await;
         return Ok(());
     }
 
-    if let Err(e) = config.apply_cli_overrides(cli.max_results, cli.page_size) {
-        eprintln!("Config error: {}", e);
-        std::process::exit(1);
-    }
-
-    if cli.debug {
-        eprintln!("[DEBUG] Config loaded with {} sites", config.sites.len());
-    }
-
-    print_banner().await;
-
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES),
-    )?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let theme_name = cli.theme.clone().unwrap_or_else(|| config.theme.clone());
-    let theme = match Theme::resolve(&theme_name) {
-        Ok(t) => t,
-        Err(e) => {
-            disable_raw_mode().ok();
-            return Err(e.into());
-        }
+    let Some(cmd) = cli.command else {
+        // No command provided: show gh-formatted help
+        print!("{HELP_TEMPLATE}");
+        return Ok(());
     };
 
-    let jira = std::sync::Arc::new(
-        api::JiraClient::from_config(&config, cli.debug)
-            .await
-            .map_err(|e| format!("Auth error: {e}"))?,
-    );
-    let mut app = App::new(config, theme, jira, cli.debug);
-    let refresh_interval = Duration::from_secs(3 * 60 * 60);
-    app.spawn_background_refresh();
-
-    let mut should_quit = false;
-    while !should_quit {
-        if app.apply_pending_updates() {
-            app.spawn_background_refresh();
+    match cmd {
+        TickCommand::Auth { action } => run_auth(action).await?,
+        TickCommand::Config(args) => {
+            cli::config_cmd::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
         }
-        app.expire_status_notices();
-        if app.needs_detail_fetch() {
-            app.ensure_selected_issue_detail().await;
+        TickCommand::Context(args) => {
+            cli::context_cmd::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
         }
-        terminal.draw(|f| ui::draw::render(f, &mut app))?;
-
-        if event::poll(Duration::from_millis(250))? {
-            should_quit = input::handle_event(&mut app, event::read()?).await;
+        TickCommand::Mcp { action } => {
+            mcp::run(action).await?;
         }
-
-        if app.last_refresh.elapsed() >= refresh_interval {
-            app.refresh_all_notify().await;
-            app.spawn_background_refresh();
+        TickCommand::Issue(args) => {
+            cli::issue::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Project(args) => {
+            cli::project_cmd::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Board(args) => {
+            cli::agile_cmd::run_board(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Sprint(args) => {
+            cli::agile_cmd::run_sprint(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Fields { action } => {
+            cli::fields_cmd::run(action)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::User(args) => {
+            cli::user_cmd::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Space(args) => {
+            cli::space_cmd::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Page(args) => {
+            cli::page_cmd::run(args.command)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Api(args) => {
+            cli::api_cmd::run(args)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Search(args) => {
+            cli::search::run(args)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Bulk { action } => {
+            cli::bulk_cmd::run(action)
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+        }
+        TickCommand::Template { action } => run_template(action).await?,
+        TickCommand::Doctor => {
+            let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
+            run_doctor(&config).await;
         }
     }
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        PopKeyboardEnhancementFlags,
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
     Ok(())
 }
 
-async fn run_template_command(action: TemplateCommand) -> Result<(), Box<dyn std::error::Error>> {
-    match action {
-        TemplateCommand::Export(args) => run_template_export(args).await,
-    }
-}
-
-async fn run_template_export(args: TemplateExportArgs) -> Result<(), Box<dyn std::error::Error>> {
-    if args.keys.is_empty() {
-        return Err(
-            "Provide at least one issue key (e.g. tick template export my-site HIN-1)".into(),
-        );
-    }
-
-    let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
-    let jira = api::JiraClient::from_config(&config, false)
-        .await
-        .map_err(|e| format!("Auth error: {e}"))?;
-
-    let content =
-        template_export::export_issues_to_toml(&config, &args.site, &args.keys, &jira).await?;
-
-    if let Some(path) = args.output {
-        template_export::write_templates_file(&path, &content, args.append)?;
-        println!("Wrote {}", path.display());
-    } else {
-        print!("{content}");
-    }
-    Ok(())
-}
-
-async fn run_auth_command(action: AuthCommand) -> Result<(), Box<dyn std::error::Error>> {
+async fn run_auth(action: AuthCommand) -> Result<(), Box<dyn std::error::Error>> {
     match action {
         AuthCommand::Login => {
             let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
@@ -413,22 +288,203 @@ async fn run_auth_command(action: AuthCommand) -> Result<(), Box<dyn std::error:
         }
         AuthCommand::Logout => {
             oauth::delete_tokens()?;
-            println!("OAuth tokens removed.");
+            println!("{} OAuth tokens removed", style::green("✓"));
         }
     }
     Ok(())
 }
 
-async fn print_banner() {
-    println!();
-    println!("████████╗██╗ ██████╗██╗  ██╗");
-    println!("╚══██╔══╝██║██╔════╝██║ ██╔╝");
-    println!("   ██║   ██║██║     █████╔╝ ");
-    println!("   ██║   ██║██║     ██╔═██╗ ");
-    println!("   ██║   ██║╚██████╗██║  ██╗");
-    println!("   ╚═╝   ╚═╝ ╚═════╝╚═╝  ╚═╝");
-    println!();
-    println!("  tick — Jira TUI");
-    tokio::time::sleep(Duration::from_millis(600)).await;
-    println!();
+async fn run_template(action: TemplateCommand) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        TemplateCommand::Export(args) => {
+            if args.keys.is_empty() {
+                return Err(
+                    "Provide at least one issue key (e.g. tick template export my-site PROJ-1)"
+                        .into(),
+                );
+            }
+            let config = Config::load().map_err(|e| format!("Config error: {e}"))?;
+            let jira = api::JiraClient::from_config(&config, false)
+                .await
+                .map_err(|e| format!("Auth error: {e}"))?;
+            let content =
+                template_export::export_issues_to_toml(&config, &args.site, &args.keys, &jira)
+                    .await?;
+            if let Some(path) = args.output {
+                template_export::write_templates_file(&path, &content, args.append)?;
+                println!("{} Wrote {}", style::green("✓"), path.display());
+            } else {
+                print!("{content}");
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn run_doctor(config: &Config) {
+    let client = match api::JiraClient::from_config(config, false).await {
+        Ok(c) => c,
+        Err(e) => {
+            println!("{} Auth error: {e}", style::red("✗"));
+            return;
+        }
+    };
+
+    println!("{}", style::bold("Atlassian Connectivity Diagnostic:"));
+    for site in &config.sites {
+        println!(
+            "\n{} {} ({})",
+            style::cyan("●"),
+            style::bold(&site.name),
+            style::dim(&site.base_url)
+        );
+        let probe_jql = "ORDER BY updated DESC";
+
+        match client
+            .search_jql(&site.base_url, probe_jql, 3, &mut None)
+            .await
+        {
+            Ok(ids) => println!(
+                "  {} Jira Search API: OK ({} sample issues found)",
+                style::green("✓"),
+                ids.len()
+            ),
+            Err(e) => println!("  {} Jira Search API: FAILED — {e}", style::red("✗")),
+        }
+
+        match client.list_projects(&site.base_url).await {
+            Ok(projs) => println!(
+                "  {} Jira Projects API: OK ({} projects visible)",
+                style::green("✓"),
+                projs.len()
+            ),
+            Err(e) => println!("  {} Jira Projects API: FAILED — {e}", style::red("✗")),
+        }
+
+        match client.list_boards(&site.base_url).await {
+            Ok(boards) => println!(
+                "  {} Jira Agile Boards: OK ({} boards visible)",
+                style::green("✓"),
+                boards.len()
+            ),
+            Err(e) => println!("  {} Jira Agile Boards: FAILED — {e}", style::red("✗")),
+        }
+
+        match client.confluence_list_spaces(&site.base_url, Some(3)).await {
+            Ok(spaces) => println!(
+                "  {} Confluence Spaces API: OK ({} spaces visible)",
+                style::green("✓"),
+                spaces.len()
+            ),
+            Err(e) => println!(
+                "  {} Confluence Spaces API: FAILED/NOT CONFIGURED — {e}",
+                style::dim("○")
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_help_text_matches_gh_style_format() {
+        assert!(HELP_TEMPLATE.contains("CORE COMMANDS"));
+        assert!(HELP_TEMPLATE.contains("JIRA COMMANDS"));
+        assert!(HELP_TEMPLATE.contains("CONFLUENCE COMMANDS"));
+        assert!(HELP_TEMPLATE.contains("ADDITIONAL COMMANDS"));
+        assert!(HELP_TEMPLATE.contains("FLAGS"));
+        assert!(HELP_TEMPLATE.contains("LEARN MORE"));
+        assert!(HELP_TEMPLATE.contains("tick <command> <subcommand> [flags]"));
+    }
+
+    #[test]
+    fn test_cli_parsing_subcommands() {
+        // Issue list
+        let cli = Cli::try_parse_from([
+            "tick",
+            "issue",
+            "list",
+            "--project",
+            "DEMO",
+            "--limit",
+            "10",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Issue(_))));
+
+        // Issue view
+        let cli = Cli::try_parse_from(["tick", "issue", "view", "PROJ-123"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Issue(_))));
+
+        // Project list
+        let cli = Cli::try_parse_from(["tick", "project", "list"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Project(_))));
+
+        // Board list
+        let cli = Cli::try_parse_from(["tick", "board", "list"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Board(_))));
+
+        // Sprint list
+        let cli = Cli::try_parse_from(["tick", "sprint", "list", "42"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Sprint(_))));
+
+        // Space list
+        let cli = Cli::try_parse_from(["tick", "space", "list"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Space(_))));
+
+        // Page view
+        let cli = Cli::try_parse_from(["tick", "page", "view", "12345"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Page(_))));
+
+        // User me
+        let cli = Cli::try_parse_from(["tick", "user", "me"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::User(_))));
+
+        // Raw API
+        let cli = Cli::try_parse_from(["tick", "api", "/rest/api/3/myself", "-X", "GET"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Api(_))));
+
+        // Config path
+        let cli = Cli::try_parse_from(["tick", "config", "path"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Config(_))));
+
+        // Context list, use, show, clear
+        let cli = Cli::try_parse_from(["tick", "context", "list"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Context(_))));
+        let cli = Cli::try_parse_from(["tick", "context", "use", "my-site"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Context(_))));
+        let cli = Cli::try_parse_from(["tick", "context", "show"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Context(_))));
+        let cli = Cli::try_parse_from(["tick", "context", "clear"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Context(_))));
+
+        // Issue transition with rules / list / resolution
+        let cli =
+            Cli::try_parse_from(["tick", "issue", "transition", "PROJ-123", "--list"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Issue(_))));
+        let cli = Cli::try_parse_from([
+            "tick",
+            "issue",
+            "transition",
+            "PROJ-123",
+            "--to",
+            "Done",
+            "--resolution",
+            "Fixed",
+            "-F",
+            "customfield_10010=val",
+            "-c",
+            "Finished ticket",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Issue(_))));
+
+        // Project components & versions
+        let cli = Cli::try_parse_from(["tick", "project", "components", "DEMO"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Project(_))));
+        let cli = Cli::try_parse_from(["tick", "project", "versions", "DEMO"]).unwrap();
+        assert!(matches!(cli.command, Some(TickCommand::Project(_))));
+    }
 }

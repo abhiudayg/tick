@@ -6,13 +6,13 @@ use crate::api::JiraClient;
 use crate::cli::util::require_site;
 use crate::config::Config;
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum FieldsCommand {
     /// List custom fields with suggested [[detail.editable_fields]] types (JSON)
     List(FieldsListArgs),
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct FieldsListArgs {
     #[arg(long)]
     pub site: String,

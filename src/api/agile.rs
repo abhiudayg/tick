@@ -127,7 +127,7 @@ impl JiraClient {
         Ok(board_id)
     }
 
-    async fn list_board_sprints(
+    pub async fn list_board_sprints(
         &self,
         base_url: &str,
         board_id: u64,
@@ -215,6 +215,75 @@ impl JiraClient {
                 resp.text().await.unwrap_or_default()
             ))
         }
+    }
+
+    pub async fn list_sprint_issues(
+        &self,
+        base_url: &str,
+        sprint_id: u64,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let base = base_url.trim_end_matches('/');
+        let url = format!("{base}/rest/agile/1.0/sprint/{sprint_id}/issue?maxResults=50");
+        let resp = self.send(|| self.get(&url).send()).await?;
+        if !resp.status().is_success() {
+            return Err(format!(
+                "Sprint issues API {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
+        }
+        let data: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        Ok(data
+            .get("issues")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    pub async fn list_board_issues(
+        &self,
+        base_url: &str,
+        board_id: u64,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let base = base_url.trim_end_matches('/');
+        let url = format!("{base}/rest/agile/1.0/board/{board_id}/issue?maxResults=50");
+        let resp = self.send(|| self.get(&url).send()).await?;
+        if !resp.status().is_success() {
+            return Err(format!(
+                "Board issues API {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
+        }
+        let data: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        Ok(data
+            .get("issues")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    pub async fn list_backlog_issues(
+        &self,
+        base_url: &str,
+        board_id: u64,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let base = base_url.trim_end_matches('/');
+        let url = format!("{base}/rest/agile/1.0/board/{board_id}/backlog?maxResults=50");
+        let resp = self.send(|| self.get(&url).send()).await?;
+        if !resp.status().is_success() {
+            return Err(format!(
+                "Board backlog API {}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            ));
+        }
+        let data: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {e}"))?;
+        Ok(data
+            .get("issues")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default())
     }
 }
 

@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -97,25 +97,25 @@ pub struct BulkFetchResponse {
     pub issues: Vec<BulkFetchIssue>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct BulkFetchIssue {
     pub key: String,
     pub fields: JiraFields,
 }
 
 /// Subset of issue fields loaded on demand when the detail pane opens.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct IssueDetailFields {
     pub description: Option<serde_json::Value>,
     pub comment: Option<JiraComments>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct IssueDetailResponse {
     pub fields: IssueDetailFields,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JiraFields {
     #[serde(rename = "issuetype")]
     pub issue_type: JiraNamed,
@@ -136,14 +136,14 @@ pub struct JiraFields {
     pub custom: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JiraStatus {
     pub name: String,
     #[serde(rename = "statusCategory")]
     pub status_category: JiraStatusCategory,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JiraStatusCategory {
     #[allow(dead_code)]
     pub key: String,
@@ -151,12 +151,12 @@ pub struct JiraStatusCategory {
     pub color_name: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JiraComments {
     pub comments: Vec<JiraComment>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JiraComment {
     pub body: Option<serde_json::Value>,
     #[allow(dead_code)]
@@ -165,30 +165,30 @@ pub struct JiraComment {
     pub author: Option<JiraUser>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JiraNamed {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JiraUser {
     #[serde(rename = "displayName")]
     pub display_name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JiraProject {
     #[allow(dead_code)]
     pub key: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JiraParent {
     pub key: String,
     pub fields: JiraParentFields,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct JiraParentFields {
     pub summary: String,
 }
